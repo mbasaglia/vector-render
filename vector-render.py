@@ -25,6 +25,7 @@ import bpy
 import mathutils
 from math import cos, degrees, radians, sqrt, acos, pi
 from random import choice
+import json
 
 bl_info = {
     "name": "Vector Render",
@@ -159,23 +160,28 @@ class mpost_engine:
             self.f.write("for y = -0.5 step 0.01 until 0.5: draw (-u / 2, y * u)--(u / 2, y * u) withcolor 0.95 white; endfor\n")
             self.f.write("for y = -0.5 step 0.10 until 0.5: draw (-u / 2, y * u)--(u / 2, y * u) withcolor 0.90 white; endfor\n")
             for x in range(-4, 5, 1):
-                self.f.write("label(btex %.1f etex, (+0.45 u, %f u));" % (x / 10, x / 10));
-                self.f.write("label(btex %.1f etex, (-0.45 u, %f u));" % (x / 10, x / 10));
-                self.f.write("label(btex %.1f etex, (%f u, +0.45 u));" % (x / 10, x / 10));
-                self.f.write("label(btex %.1f etex, (%f u, -0.45 u));" % (x / 10, x / 10));
+                self.f.write("label(btex %.1f etex, (+0.45 u, %f u));" % (x / 10, x / 10))
+                self.f.write("label(btex %.1f etex, (-0.45 u, %f u));" % (x / 10, x / 10))
+                self.f.write("label(btex %.1f etex, (%f u, +0.45 u));" % (x / 10, x / 10))
+                self.f.write("label(btex %.1f etex, (%f u, -0.45 u));" % (x / 10, x / 10))
 
     def new_frame(self):
         pass
 
     def set_canvas_size(self, xmin, xmax, ymin, ymax):
-        self.f.write("pickup pencircle scaled 0 pt;\n");
-        self.f.write("draw (%f u, %f u)--(%f u, %f u)--(%f u, %f u)--(%f u, %f u)--cycle withcolor white;\n" % (xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax))
-        self.f.write("pickup pencircle scaled 0.5 pt;\n");
+        self.f.write("pickup pencircle scaled 0 pt;\n")
+        self.f.write(
+            "draw (%f u, %f u)--(%f u, %f u)--(%f u, %f u)--(%f u, %f u)--cycle withcolor white;\n" %
+            (xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax)
+        )
+        self.f.write("pickup pencircle scaled 0.5 pt;\n")
+
     def dotdraw(self, coord):
-            self.f.write("pickup pencircle scaled 2 pt;\n")
-            self.f.write("drawdot (%f u, %f u);\n" % (coord[0], coord[1]))
-            self.f.write("pickup pencircle scaled 0.5 pt;\n")
-    def polydraw(self, segs, colour = None, hidden = False):
+        self.f.write("pickup pencircle scaled 2 pt;\n")
+        self.f.write("drawdot (%f u, %f u);\n" % (coord[0], coord[1]))
+        self.f.write("pickup pencircle scaled 0.5 pt;\n")
+
+    def polydraw(self, segs, colour=None, hidden=False):
         if len(segs) < 2:
             return
 
@@ -198,8 +204,9 @@ class mpost_engine:
             else:
                 self.f.write(dashed_str + " withcolor ((1 - tr) * %s + tr * white);\n" % (colour))
         else:
-            self.f.write(dashed_str + " withcolor ec;\n" )
-    def polyfill(self, segs, colour = None):
+            self.f.write(dashed_str + " withcolor ec;\n")
+
+    def polyfill(self, segs, colour=None):
         if len(segs) < 2:
             return
         self.f.write("fill (%f u, %f u)" % (segs[0][0], segs[0][1]))
@@ -210,6 +217,7 @@ class mpost_engine:
         else:
             colour = "(%f, %f, %f)" % (colour[0], colour[1], colour[2])
         self.f.write("--cycle withcolor %s;\n" % (colour))
+
     def label(self, text, pos, ax, ay, rotation):
         suffix = ""
         # Note: Align is reversed in metapost
@@ -240,17 +248,18 @@ class mpost_engine:
         self.f.write("lw := %f;\n" % (val))
     def set_small_linewidth(self):
         self.set_linewidth(0.05)
-    def __del__(self):
+    def end(self):
         self.f.write("endfig;\nend\n")
 
-# SVG ENGINE CLASS --------------------------------------------------------------------------------------------------------------------------------------------
 
+# SVG ENGINE CLASS --------------------------------------------------------------------------------------------------------------------------------------------
 class svg_engine:
-    def __init__(self, filename, framecount = None, animationtime = None):
+    def __init__(self, filename, framecount, animationtime, frame_Step):
         self.f = open(filename, "w")
         self.framecount = 0
         self.frametotal = framecount
         self.animationtime = animationtime
+        self.frame_step = frame_step
 
         # FIXME
         scene = bpy.context.scene
@@ -271,21 +280,26 @@ class svg_engine:
         self.linecolour = [gamma_correction(scene.vector_render_edge_colour[0]),
                            gamma_correction(scene.vector_render_edge_colour[1]),
                            gamma_correction(scene.vector_render_edge_colour[2])]
+
     def new_frame(self):
         self.f.write('  </g>\n\n')
-        self.framecount += 1
+        self.framecount += self.frame_step
         self.f.write('  <g stroke-linejoin="round" stroke-linecap="round">\n')
         if self.animationtime:
             self.f.write("    <animate id='frame_%i' attributeName='display' values='%s' dur='%fs' fill='freeze' begin='0s' repeatCount='indefinite'/>\n" % (self.framecount, "none;" * self.framecount + "inline;" + "none;" * (self.frametotal - self.framecount - 1), self.animationtime))
+
     def recalc(self, point):
         return (0.5 * self.width + point[0] * self.scale, 0.5 * self.height - point[1] * self.scale)
+
     def set_canvas_size(self, xmin, xmax, ymin, ymax):
         # Nothing to do here
         pass
+
     def dotdraw(self, coord):
         # FIXME
         pass
-    def polydraw(self, segs, colour = None, hidden = False):
+
+    def polydraw(self, segs, colour=None, hidden=False):
         if len(segs) < 2:
             return
 
@@ -308,7 +322,8 @@ class svg_engine:
             self.f.write(", %f %f" % self.recalc(segs[i]))
 
         self.f.write('"' + dashed_str + opacity_str + ' stroke="%s" fill="transparent" stroke-width="%f"/>\n' % (colour_str, self.linewidth))
-    def polyfill(self, segs, colour = None):
+
+    def polyfill(self, segs, colour=None):
         if len(segs) < 2:
             return
         self.f.write('    <polygon points="%f %f,' % self.recalc(segs[0]))
@@ -319,22 +334,179 @@ class svg_engine:
         else:
             colour_str = "rgb(%i,%i,%i)" % (colour[0] * 255, colour[1] * 255, colour[2] * 255)
         self.f.write('" fill="%s"/>\n' % (colour_str))
+
     def label(self, text, pos, ax, ay, rotation):
         # FIXME: align
         px, py = self.recalc(pos[1:])
         self.f.write('    <text x="%f" y="%f">%s</text>\n' % (px, py, text))
         pass
+
     def set_linewidth(self, val):
         self.linewidth = val
+
     def set_small_linewidth(self):
         self.set_linewidth(1)
-    def __del__(self):
+
+    def end(self):
         self.f.write("  </g>\n")
         self.f.write("</svg>\n")
         self.f.close()
 
-# BSP TREE ----------------------------------------------------------------------------------------------------------------------------------------------------
 
+class LottieEngine:
+    def __init__(self, filename, framecount, fps, frame_step):
+        self.f = open(filename, "w")
+        self.framecount = 0
+        self.frametotal = framecount
+        self.layers = []
+        self.frame_step = frame_step
+        scene = bpy.context.scene
+        self.width = scene.render.resolution_x
+        self.height = scene.render.resolution_y
+        self.json = {
+            "v": "5.5.2",
+            "fr": fps,
+            "ip": 0,
+            "op": framecount,
+            "w": self.width,
+            "h": self.height,
+            "ddd": 0,
+            "layers": self.layers,
+        }
+        self.shape_colors = {}
+
+        self.scale = max(self.width, self.height)
+
+        self.linewidth = 1.5
+
+        self.linecolour = [gamma_correction(scene.vector_render_edge_colour[0]),
+                           gamma_correction(scene.vector_render_edge_colour[1]),
+                           gamma_correction(scene.vector_render_edge_colour[2])]
+
+    def new_frame(self):
+        self.push_frame()
+        self.framecount += self.frame_step
+
+    def push_frame(self):
+        if not self.shape_colors:
+            return
+
+        for (color, stroke, opacity), shapes in self.shape_colors.items():
+            self.layers.append({
+                "ddd": 0,
+                "hd": False,
+                "ty": 4,
+                "sr": 1,
+                "ks": {
+                    "a": self.animatable([0, 0]),
+                    "p": self.animatable([0, 0]),
+                    "s": self.animatable([100, 100]),
+                    "r": self.animatable(0),
+                    "o": self.animatable(100),
+                },
+                "ao": 0,
+                "ip": self.framecount,
+                "op": self.framecount + self.frame_step,
+                "st": 0,
+                "bm": 0,
+                "shapes": [
+                    {
+                        "ty": "gr",
+                        "it": shapes + [
+                            self.style_shape(color, stroke, opacity),
+                            {
+                                "ty": "tr",
+                                "a": self.animatable([0, 0]),
+                                "p": self.animatable([0, 0]),
+                                "s": self.animatable([100, 100]),
+                                "r": self.animatable(0),
+                                "o": self.animatable(100),
+                            }
+                        ]
+                    }
+                ],
+            })
+
+        self.shape_colors = {}
+
+    def style_shape(self, color, stroke, opacity):
+        if stroke < 0:
+            return {
+                "ty": "fl",
+                "o": self.animatable(opacity),
+                "c": self.animatable(color),
+            }
+        else:
+            return {
+                "ty": "st",
+                "hd": False,
+                "lc": 2,
+                "lj": 2,
+                "ml": 0,
+                "o": self.animatable(opacity),
+                "w": self.animatable(stroke),
+                "c": self.animatable(color),
+            }
+
+    def recalc(self, point):
+        return (0.5 * self.width + point[0] * self.scale, 0.5 * self.height - point[1] * self.scale)
+
+    def set_canvas_size(self, xmin, xmax, ymin, ymax):
+        pass
+
+    def dotdraw(self, coord):
+        pass
+
+    def create_shape(self, color, stroke, opacity, segs):
+        if len(segs) < 2:
+            return
+
+        key = (tuple(color), stroke, opacity)
+        shape = {
+            "ty": "sh",
+            "ks": self.animatable({
+                "c": len(segs) > 2,
+                "i": [[0, 0]] * len(segs),
+                "o": [[0, 0]] * len(segs),
+                "v": list(map(self.recalc, segs)),
+            })
+        }
+        if key not in self.shape_colors:
+            self.shape_colors[key] = [shape]
+        else:
+            self.shape_colors[key].append(shape)
+
+    def animatable(self, value):
+        return {"a": 0, "k": value}
+
+    def polydraw(self, segs, colour=None, hidden=False):
+        self.create_shape(colour, self.linewidth, 20 if hidden else 100, segs)
+
+    def polyfill(self, segs, colour=None):
+        self.create_shape(colour, -1, 100, segs)
+
+    def label(self, text, pos, ax, ay, rotation):
+        pass
+
+    def set_linewidth(self, val):
+        self.linewidth = val
+
+    def set_small_linewidth(self):
+        self.set_linewidth(1)
+
+    def end(self):
+        self.push_frame()
+        for part in json.JSONEncoder().iterencode(self.json):
+            try:
+                tmp = round(float(part), 3)
+            except ValueError:
+                pass
+            else:
+                part = '{:.3g}'.format(tmp)
+            self.f.write(part)
+
+
+# BSP TREE ----------------------------------------------------------------------------------------------------------------------------------------------------
 class bsp_node:
     def __init__(self, poly):
         self.node_polys = [poly]
@@ -1075,6 +1247,7 @@ class VectorRender(bpy.types.Operator):
         end = scene.frame_end
         frames = end - start + 1
         animate = False
+        step = scene.vector_render_frame_step
 
         filename = scene.vector_render_file
         if scene.vector_render_output_format == "MPOST":
@@ -1082,20 +1255,31 @@ class VectorRender(bpy.types.Operator):
         elif scene.vector_render_output_format == "SVG":
             animate = scene.vector_render_animate
             if animate:
-                m = svg_engine(filename, frames, frames / scene.render.fps)
+                m = svg_engine(filename, frames, frames / scene.render.fps, step)
             else:
-                m = svg_engine(filename, None, None)
+                m = svg_engine(filename, None, None, None)
+        elif scene.vector_render_output_format == "Lottie":
+            animate = True
+            m = LottieEngine(filename, frames, scene.render.fps, step)
+
+        window = bpy.context.window_manager
+        window.progress_begin(0, end)
 
         if animate:
-            for frame in range(start, end + 1):
+            for frame in range(start, end + 1, step):
                 scene.frame_set(frame)
                 self.draw_frame(context, m)
                 if frame != end:
                     m.new_frame()
+                window.progress_update(frame)
             scene.frame_set(current_frame)
         else:
             self.draw_frame(context, m)
 
+        m.end()
+
+        window.progress_end()
+        print("Done!")
         return {'FINISHED'}
 
     def draw_frame(self, context, m):
@@ -1302,12 +1486,12 @@ class VectorRender(bpy.types.Operator):
 
         # Set canvas size
         if set_canvas_size:
-            m.set_small_linewidth();
+            m.set_small_linewidth()
             m.set_canvas_size(*p.get_canvas_size())
 
         # Fill polygons
         if fill_polygons:
-            m.set_small_linewidth();
+            m.set_small_linewidth()
             polytree.draw(p, m)
 
         # Draw hidden lines
@@ -1327,6 +1511,7 @@ class VectorRender(bpy.types.Operator):
             for lb in labellist:
                 lb.draw(m)
 
+
 class VectorRenderPanel(bpy.types.Panel):
     """Creates a Panel in the Object properties window"""
     bl_label = "Vector Render"
@@ -1336,38 +1521,51 @@ class VectorRenderPanel(bpy.types.Panel):
     bl_context = "render"
 
     # Output (file) options
-    bpy.types.Scene.vector_render_file = bpy.props.StringProperty(name = "", subtype="FILE_PATH")
-    bpy.types.Scene.vector_render_size = bpy.props.FloatProperty(name = "Size", default = 10, soft_min = 0, min = 0.001)
-    bpy.types.Scene.vector_render_size_unit = bpy.props.EnumProperty(items = [("CM", "cm", "Unit of the render size (centimeters)"),
-                                                                              ("MM", "mm", "Unit of the render size (millimeters)"),
-                                                                              ("PT", "pt", "Unit of the render size (PostScript points)")], name = "Unit")
-    bpy.types.Scene.vector_render_output_format = bpy.props.EnumProperty(items = [("SVG", "SVG", "Scalable Vector Graphics"),
-                                                                              ("MPOST", "Metapost", "Metapost")], default = "SVG")
-    bpy.types.Scene.vector_render_canvas_size = bpy.props.BoolProperty(name = "Force dimensions", default = False)
-    bpy.types.Scene.vector_render_animate = bpy.props.BoolProperty(name = "Animate", default = False)
+    bpy.types.Scene.vector_render_file = bpy.props.StringProperty(name="", subtype="FILE_PATH")
+    bpy.types.Scene.vector_render_size = bpy.props.FloatProperty(name="Size", default=10, soft_min=0, min=0.001)
+    bpy.types.Scene.vector_render_size_unit = bpy.props.EnumProperty(
+        items=[
+            ("CM", "cm", "Unit of the render size (centimeters)"),
+            ("MM", "mm", "Unit of the render size (millimeters)"),
+            ("PT", "pt", "Unit of the render size (PostScript points)")
+        ],
+        name="Unit"
+    )
+    bpy.types.Scene.vector_render_output_format = bpy.props.EnumProperty(
+        items=[
+            ("Lottie", "Lottie", "Lottie JSON"),
+            ("SVG", "SVG", "Scalable Vector Graphics"),
+            ("MPOST", "Metapost", "Metapost")
+        ], default="SVG"
+    )
+    bpy.types.Scene.vector_render_canvas_size = bpy.props.BoolProperty(name="Force dimensions", default=False)
+    bpy.types.Scene.vector_render_animate = bpy.props.BoolProperty(name="Animate", default=False)
+    bpy.types.Scene.vector_render_frame_step = bpy.props.IntProperty(name="Frame Step", default=1, min=1, soft_max=60)
 
     # Drawing options
-    bpy.types.Scene.vector_render_apply_modifiers = bpy.props.BoolProperty(name = "Apply modifiers", default = True)
+    bpy.types.Scene.vector_render_apply_modifiers = bpy.props.BoolProperty(name="Apply modifiers", default=True)
 
     # Edges
-    bpy.types.Scene.vector_render_edge_width = bpy.props.FloatProperty(name = "Line width", default = 0.5, min = 0, soft_min = 0)
-    bpy.types.Scene.vector_render_edge_colour = bpy.props.FloatVectorProperty(name = "Edge color", subtype = "COLOR", default = (0, 0, 0),
-                                                                              min = 0, soft_min = 0, max = 1, soft_max = 1)
-    bpy.types.Scene.vector_render_hidden_lines = bpy.props.EnumProperty(items = [("HIDE", "Hide", "hide"),
+    bpy.types.Scene.vector_render_edge_width = bpy.props.FloatProperty(name="Line width", default=0.5, min=0, soft_min=0)
+    bpy.types.Scene.vector_render_edge_colour = bpy.props.FloatVectorProperty(name="Edge color", subtype="COLOR", default=(0, 0, 0),
+                                                                              min=0, soft_min=0, max=1, soft_max=1)
+    bpy.types.Scene.vector_render_hidden_lines = bpy.props.EnumProperty(items=[("HIDE", "Hide", "hide"),
                                                                                ("SHOW", "Show", "show"),
-                                                                               ("DASH", "Dash", "dash")], default = "HIDE")
-    bpy.types.Scene.vector_render_plane_edges = bpy.props.EnumProperty(items = [("SHOW", "Show", "show"), ("HIDE", "Hide", "hide")],
-                                                                                default = "HIDE")
-    bpy.types.Scene.vector_render_plane_edges_angle = bpy.props.FloatProperty(name = "Angle limit", default = 0.0, soft_min = 0, min = 0, max = pi,
-                                                                              soft_max = pi, subtype = "ANGLE", precision = 1, step = 100)
-    bpy.types.Scene.vector_render_draw_edges = bpy.props.BoolProperty(name = "Draw edges", default = True)
+                                                                               ("DASH", "Dash", "dash")], default="HIDE")
+    bpy.types.Scene.vector_render_plane_edges = bpy.props.EnumProperty(
+        items=[("SHOW", "Show", "show"), ("HIDE", "Hide", "hide")],
+        default="HIDE"
+    )
+    bpy.types.Scene.vector_render_plane_edges_angle = bpy.props.FloatProperty(name="Angle limit", default=0.0, soft_min=0, min=0, max=pi,
+                                                                              soft_max=pi, subtype="ANGLE", precision=1, step=100)
+    bpy.types.Scene.vector_render_draw_edges = bpy.props.BoolProperty(name="Draw edges", default=False)
 
     # Faces
-    bpy.types.Scene.vector_render_draw_faces = bpy.props.BoolProperty(name = "Draw faces", default = False)
-    bpy.types.Scene.vector_render_use_lights = bpy.props.BoolProperty(name = "Use lights", default = False)
-    bpy.types.Scene.vector_render_face_colour = bpy.props.FloatVectorProperty(name = "", subtype = "COLOR", default = (0.8, 0.8, 0.8),
-                                                                              min = 0, soft_min = 0, max = 1, soft_max = 1)
-    bpy.types.Scene.vector_render_force_face_colour = bpy.props.BoolProperty(name = "Force face color", default = False)
+    bpy.types.Scene.vector_render_draw_faces = bpy.props.BoolProperty(name="Draw faces", default=True)
+    bpy.types.Scene.vector_render_use_lights = bpy.props.BoolProperty(name="Use lights", default=True)
+    bpy.types.Scene.vector_render_face_colour = bpy.props.FloatVectorProperty(name="", subtype="COLOR", default=(0.8, 0.8, 0.8),
+                                                                              min=0, soft_min=0, max=1, soft_max=1)
+    bpy.types.Scene.vector_render_force_face_colour = bpy.props.BoolProperty(name="Force face color", default=False)
 
     def draw(self, context):
         scene = context.scene
@@ -1377,16 +1575,23 @@ class VectorRenderPanel(bpy.types.Panel):
         filebox.label(text="File:")
         filebox.prop(context.scene, "vector_render_file")
         filebox.label(text="Format:")
-        buttonrow = filebox.row(align = True)
+
+        buttonrow = filebox.row(align=True)
         buttonrow.prop_enum(context.scene, "vector_render_output_format", "SVG")
         buttonrow.prop_enum(context.scene, "vector_render_output_format", "MPOST")
+        buttonrow.prop_enum(context.scene, "vector_render_output_format", "Lottie")
+
         if scene.vector_render_output_format == "MPOST":
-            row = filebox.row(align = True)
+            row = filebox.row(align=True)
             row.prop(context.scene, "vector_render_size")
             row.prop(context.scene, "vector_render_size_unit")
             filebox.prop(context.scene, "vector_render_canvas_size")
-        if scene.vector_render_output_format == "SVG":
+        elif scene.vector_render_output_format == "SVG":
             filebox.prop(context.scene, "vector_render_animate")
+            if scene.vector_render_animate:
+                filebox.prop(context.scene, "vector_render_frame_step")
+        elif scene.vector_render_output_format == "Lottie":
+            filebox.prop(context.scene, "vector_render_frame_step")
 
         layout.prop(scene, "vector_render_apply_modifiers")
 
@@ -1396,13 +1601,13 @@ class VectorRenderPanel(bpy.types.Panel):
             edgebox.prop(context.scene, "vector_render_edge_width")
             edgebox.prop(context.scene, "vector_render_edge_colour")
             edgebox.label(text="Plane edges:")
-            buttonrow = edgebox.row(align = True)
+            buttonrow = edgebox.row(align=True)
             buttonrow.prop_enum(context.scene, "vector_render_plane_edges", "HIDE")
             buttonrow.prop_enum(context.scene, "vector_render_plane_edges", "SHOW")
             if scene.vector_render_plane_edges == "HIDE":
                 edgebox.prop(context.scene, "vector_render_plane_edges_angle")
             edgebox.label(text="Obscured edges:")
-            buttonrow = edgebox.row(align = True)
+            buttonrow = edgebox.row(align=True)
             buttonrow.prop_enum(context.scene, "vector_render_hidden_lines", "HIDE")
             buttonrow.prop_enum(context.scene, "vector_render_hidden_lines", "DASH")
             buttonrow.prop_enum(context.scene, "vector_render_hidden_lines", "SHOW")
@@ -1419,6 +1624,7 @@ class VectorRenderPanel(bpy.types.Panel):
         
         layout.separator()
         layout.operator("render.vector_render")
+
 
 def register():
     bpy.utils.register_class(VectorRender)
